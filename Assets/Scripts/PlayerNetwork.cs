@@ -3,15 +3,17 @@ using Unity.Collections;
 using UnityEngine;
 using System;
 using UnityEditor.MemoryProfiler;
+using System.Collections;
+using TMPro;
 
 public class PlayerNetwork : NetworkBehaviour
 {
     // Сетевые переменные 
+    [SerializeField] private GameObject _visualModel;
 
-    
     /// Никнейм: читают все, пишет только сервер.
     /// FixedString32Bytes — сетевой-сериализуемый тип для строк.
-    
+
     public readonly NetworkVariable<FixedString32Bytes> Nickname = new(
         default,
         NetworkVariableReadPermission.Everyone,
@@ -20,7 +22,6 @@ public class PlayerNetwork : NetworkBehaviour
 
     
     /// Здоровье: читают все, пишет только сервер.
-    /// Стартовое значение: 100.
     
     public readonly NetworkVariable<int> HP = new(
         100,
@@ -28,11 +29,20 @@ public class PlayerNetwork : NetworkBehaviour
         NetworkVariableWritePermission.Server
     );
 
+
+    public NetworkVariable<bool> IsAlive = new(
+        true,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    [SerializeField] private Transform[] _spawnPoints;
+
     // События для UI
 
-    
+
     /// Вызывается на всех клиентах при изменении никнейма.
-    
+
     public event Action<string> OnNicknameChanged;
 
     
@@ -46,6 +56,7 @@ public class PlayerNetwork : NetworkBehaviour
         // Подписка на изменения сетевых переменных
         Nickname.OnValueChanged += OnNicknameValueChanged;
         HP.OnValueChanged += OnHealthValueChanged;
+        IsAlive.OnValueChanged += OnIsAliveChanged;
 
         // Если объект уже заспавнен — сразу уведомляем подписчиков
         if (IsSpawned)
@@ -66,6 +77,8 @@ public class PlayerNetwork : NetworkBehaviour
         // Отписка от событий для предотвращения утечек памяти
         Nickname.OnValueChanged -= OnNicknameValueChanged;
         HP.OnValueChanged -= OnHealthValueChanged;
+        IsAlive.OnValueChanged -= OnIsAliveChanged;
+
     }
 
     //  ServerRpc: отправка ника на сервер 
@@ -108,27 +121,63 @@ public class PlayerNetwork : NetworkBehaviour
 
     private void OnHealthValueChanged(int previous, int current)
     {
+        if (!IsServer) return;
         OnHealthChanged?.Invoke(current);
 
         // Логика при смерти (срабатывает только при переходе через 0)
-        if (current <= 0 && previous > 0)
+        if (current <= 0 && IsAlive.Value)
         {
-            OnPlayerDefeatedServerRpc();
+            if (current <= 0 && IsAlive.Value)
+            {
+                // Прямой вызов вместо ServerRpc (мы уже на сервере)
+                Debug.Log($"[Server] Player {Nickname.Value} (ID: {OwnerClientId}) defeated!");
+                if (HP.Value > 0) HP.Value = 0; // страховка
+
+                IsAlive.Value = false;
+                StartCoroutine(RespawnRoutine());
+            }
         }
     }
 
-    // ServerRpc: обработка смерти
 
-    [ServerRpc(RequireOwnership = false)]
-    private void OnPlayerDefeatedServerRpc()
+    private IEnumerator RespawnRoutine()
     {
-        // Здесь можно: начислить очки убийце, заспавнить эффект, запланировать возрождение
-        Debug.Log($"[Server] Player {Nickname.Value} (ID: {OwnerClientId}) defeated!");
+        yield return new WaitForSeconds(3f);
 
-        // Пример: не даём здоровью уйти ниже 0 (дополнительная страховка)
-        if (HP.Value > 0)
-            HP.Value = 0;
+        // Выбрать случайную точку респавна
+        int idx = UnityEngine.Random.Range(0, _spawnPoints.Length);
+        transform.position = _spawnPoints[idx].position;
+
+        HP.Value = 100;
+        // Сброс патронов (если есть компонент PlayerShooting)
+        var shooting = GetComponent<PlayerShooting>();
+        if (shooting != null)
+        {
+            shooting.CurrentAmmo.Value = shooting._maxAmmo; // нужно передать _maxAmmo или хранить его в PlayerNetwork
+        }
+        IsAlive.Value = true;
     }
+
+
+    private void OnIsAliveChanged(bool prev, bool next)
+    {
+        // Показываем/скрываем модель на всех клиентах
+        // Студент реализует самостоятельно
+        if (_visualModel != null)
+        {
+            _visualModel.SetActive(next);
+        }
+        else
+        {
+            // Альтернатива: найти MeshRenderer на себе или дочерних объектах
+            MeshRenderer[] renderers = GetComponentsInChildren<MeshRenderer>();
+            foreach (var rend in renderers)
+            {
+                rend.enabled = next;
+            }
+        }
+    }
+
 
     //  Публичные методы для чтения 
 
@@ -143,7 +192,7 @@ public class PlayerNetwork : NetworkBehaviour
     public int GetCurrentHealth() => HP.Value;
 
     
-    /// Проверка: жив ли игрок?
     
-    public bool IsAlive() => HP.Value > 0;
+    
+    
 }
