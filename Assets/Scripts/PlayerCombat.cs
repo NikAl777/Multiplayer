@@ -10,7 +10,7 @@ public class PlayerCombat : NetworkBehaviour
     [SerializeField] private KeyCode _attackKey = KeyCode.Mouse0; // ЛКМ по умолчанию
 
     [Header("References")]
-    [SerializeField] private Camera _playerCamera;
+    private Camera _playerCamera;
     [SerializeField] private PlayerNetwork _playerNetwork;
 
     private float _lastAttackTime;
