@@ -39,7 +39,7 @@ public class PlayerShooting : NetworkBehaviour
 
     private void Update()
     {
-        if (!base.Owner.IsLocalClient || !_playerNetwork.IsAlive.Value) return;
+        if (base.Owner == null || !base.Owner.IsLocalClient || !_playerNetwork.IsAlive.Value) return;
         if (Input.GetKeyDown(KeyCode.Space))
             Shoot(_firePoint.position, _firePoint.forward);
     }
@@ -54,6 +54,12 @@ public class PlayerShooting : NetworkBehaviour
         CurrentAmmo.Value--;
 
         GameObject go = Instantiate(_projectilePrefab, pos + dir * 1.2f, Quaternion.LookRotation(dir));
+
+        if (go.TryGetComponent<Projectile>(out Projectile proj))
+        {
+            proj.Initialize(_playerNetwork);
+        }
+
         base.ServerManager.Spawn(go, conn);
     }
 }

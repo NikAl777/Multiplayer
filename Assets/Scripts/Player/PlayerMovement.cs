@@ -19,7 +19,7 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Update()
     {
-        if (!base.Owner.IsLocalClient || _playerNetwork == null || !_playerNetwork.IsAlive.Value) return;
+        if (base.Owner == null || !base.Owner.IsLocalClient || _playerNetwork == null || !_playerNetwork.IsAlive.Value) return;
 
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");

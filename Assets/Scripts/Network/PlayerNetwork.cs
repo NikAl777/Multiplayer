@@ -1,9 +1,10 @@
-﻿using FishNet.Object;
+﻿using FishNet.Connection;
+using FishNet.Object;
 using FishNet.Object.Synchronizing;
-using UnityEngine;
 using System;
 using System.Collections;
-using FishNet.Connection;
+
+using UnityEngine;
 
 public class PlayerNetwork : NetworkBehaviour
 {
@@ -13,11 +14,11 @@ public class PlayerNetwork : NetworkBehaviour
     public readonly SyncVar<string> Nickname = new SyncVar<string>(string.Empty);
     public readonly SyncVar<int> HP = new SyncVar<int>(100);
     public readonly SyncVar<bool> IsAlive = new SyncVar<bool>(true);
+    public readonly SyncVar<int> Score = new SyncVar<int>(0);
 
+    public event Action<int> OnScoreChangedEvent;
     public event Action<string> OnNicknameChangedEvent;
     public event Action<int> OnHPChangedEvent;
-
-    
 
     private bool _isRespawning;
 
@@ -32,14 +33,14 @@ public class PlayerNetwork : NetworkBehaviour
     {
         OnHPChangedEvent?.Invoke(newVal);
 
-        if (!base.IsServerInitialized)
+        /*if (!base.IsServerInitialized)
             return;
 
         if (newVal <= 0 && IsAlive.Value)
         {
             IsAlive.Value = false;
             HP.Value = 0; // гарантируем 0
-        }
+        }*/
     }
 
     private void OnIsAliveChanged(bool oldVal, bool newVal, bool asServer)
@@ -58,22 +59,45 @@ public class PlayerNetwork : NetworkBehaviour
         {
             _isRespawning = true;
             StartCoroutine(RespawnRoutine());
-            
         }
+
+    }
+
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        // Хост: локальный клиент и сервер в одном процессе — сразу ставим ник с экрана меню.
+        // ServerRpc с клиента хоста иногда приходит позже или не в том порядке; SyncVar должен задаваться на сервере.
+        if (Owner != null && Owner.IsLocalClient)
+            ApplyServerNickname(ConnectionUI.PlayerNickname);
     }
 
     public override void OnStartClient()
     {
-        base.OnStarClient();
+        base.OnStartClient();
         Nickname.OnChange += OnNicknameChanged;
         HP.OnChange += OnHPChanged;
         IsAlive.OnChange += OnIsAliveChanged;
+        Score.OnChange += OnScoreChanged;
 
-        if (base.Owner.IsLocalClient && base.Owner!=null)
+        // Хост уже получил ник в OnStartServer; удалённым клиентам шлём ServerRpc.
+        if (base.Owner != null && base.Owner.IsLocalClient && !IsHostStarted)
             StartCoroutine(DelayedNicknameRpc());
     }
 
+    public override void OnStopNetwork()
+    {
+        Nickname.OnChange -= OnNicknameChanged;
+        HP.OnChange -= OnHPChanged;
+        IsAlive.OnChange -= OnIsAliveChanged;
+        Score.OnChange -= OnScoreChanged;
+        base.OnStopNetwork();
+    }
 
+    private void OnScoreChanged(int oldVal, int newVal, bool asServer)
+    {
+        OnScoreChangedEvent?.Invoke(newVal);
+    }
 
     private IEnumerator RespawnRoutine()
     {
@@ -103,14 +127,49 @@ public class PlayerNetwork : NetworkBehaviour
         SetNickname(nick);
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void SetNickname(string nickname)
+    private void ApplyServerNickname(string nickname)
     {
-        string safe = string.IsNullOrWhiteSpace(nickname)
+        string trimmed = nickname == null ? string.Empty : nickname.Trim();
+        string safe = string.IsNullOrWhiteSpace(trimmed)
             ? $"Player_{base.Owner?.ClientId ?? 0}"
-            : nickname.Trim().Substring(0, Mathf.Min(30, nickname.Length));
+            : trimmed.Substring(0, Mathf.Min(30, trimmed.Length));
         Nickname.Value = safe;
     }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void SetNickname(string nickname)
+    {
+        ApplyServerNickname(nickname);
+    }
 
+    public void TakeDamage(int damage, PlayerNetwork attacker)
+    {
+        if (!base.IsServerInitialized || !IsAlive.Value) return;
+
+        // Вычитаем здоровье безопасным образом
+        HP.Value = Mathf.Max(0, HP.Value - damage);
+
+        // Если здоровье кончилось — фиксируем смерть и запускаем возрождение
+        if (HP.Value <= 0)
+        {
+            IsAlive.Value = false;
+            // 1. НАЧИСЛЕНИЕ ОЧКОВ: проверяем, что убийца существует и это не самоубийство
+            if (attacker != null && attacker != this)
+            {
+                attacker.Score.Value += 1; 
+                Debug.Log($"[Server] Игрок {attacker.Nickname.Value} убил {Nickname.Value}. Счет убийцы стал: {attacker.Score.Value}");
+            }
+            else
+            {
+                Debug.Log($"[Server] Игрок {Nickname.Value} погиб, но убийца не определен (null) или это самоубийство.");
+            }
+
+            
+            if (!_isRespawning)
+            {
+                _isRespawning = true;
+                StartCoroutine(RespawnRoutine()); 
+            }
+        }
+    }
 }

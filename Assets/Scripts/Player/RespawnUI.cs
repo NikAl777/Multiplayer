@@ -19,7 +19,7 @@ public class RespawnUI : MonoBehaviour
     {
         while (_localPlayer == null)
         {
-            foreach (var p in FindObjectsOfType<PlayerNetwork>())
+            foreach (PlayerNetwork p in FindObjectsByType<PlayerNetwork>(FindObjectsSortMode.None))
             {
                 if (p.Owner != null && p.Owner.IsLocalClient)
                 {

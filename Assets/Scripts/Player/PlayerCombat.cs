@@ -18,7 +18,7 @@ public class PlayerCombat : NetworkBehaviour
 
     private void Update()
     {
-        if (!base.Owner.IsLocalClient || !_playerNetwork.IsAlive.Value) return;
+        if (base.Owner == null || !base.Owner.IsLocalClient || !_playerNetwork.IsAlive.Value) return;
 
         if (Input.GetKeyDown(_attackKey) && Time.time - _lastAttackTime >= _attackCooldown)
         {
@@ -63,8 +63,7 @@ public class PlayerCombat : NetworkBehaviour
         float distance = Vector3.Distance(transform.position, targetObject.transform.position);
         if (distance > _attackRange) return;
 
-        int newHp = Mathf.Max(0, targetPlayer.HP.Value - damage);
-        targetPlayer.HP.Value = newHp;
-        Debug.Log($"{gameObject.name} dealt {damage} to {targetPlayer.gameObject.name}. HP = {newHp}");
+        // Вызываем серверный метод получения урона
+        targetPlayer.TakeDamage(damage,_playerNetwork);
     }
 }

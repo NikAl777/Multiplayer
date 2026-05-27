@@ -8,12 +8,15 @@ public class PickupManager : NetworkBehaviour
     [SerializeField] private Transform[] _spawnPoints;
     [SerializeField] private float _respawnDelay = 10f;
 
-    private void Start()
+    public override void OnStartServer()
     {
-        
-        if (!base.IsServerStarted) return;
-        foreach (var point in _spawnPoints)
-            SpawnPickup(point.position);
+        base.OnStartServer();
+        if (_healthPickupPrefab == null || _spawnPoints == null) return;
+        foreach (Transform point in _spawnPoints)
+        {
+            if (point != null)
+                SpawnPickup(point.position);
+        }
     }
 
     public void OnPickedUp(Vector3 position) => StartCoroutine(RespawnAfterDelay(position));
@@ -27,7 +30,8 @@ public class PickupManager : NetworkBehaviour
     private void SpawnPickup(Vector3 position)
     {
         GameObject go = Instantiate(_healthPickupPrefab, position, Quaternion.identity);
-        go.GetComponent<HealthPickup>().Init(this);
+        if (go.TryGetComponent(out HealthPickup pickup))
+            pickup.Init(this);
         ServerManager.Spawn(go);
     }
 }
