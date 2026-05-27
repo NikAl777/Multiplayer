@@ -1,10 +1,14 @@
 using FishNet;
 using UnityEngine;
 
+/// <summary> Горячие клавиши для отладки сети; в релизе отключите компонент на объекте. </summary>
 public class NetworkTest : MonoBehaviour
 {
     private void Update()
     {
+#if !(UNITY_EDITOR || DEVELOPMENT_BUILD)
+        return;
+#endif
         if (Input.GetKeyDown(KeyCode.H))
         {
             InstanceFinder.ServerManager.StartConnection();

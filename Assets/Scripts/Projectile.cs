@@ -8,7 +8,12 @@ public class Projectile : NetworkBehaviour
     [SerializeField] private float _lifeTime = 3f;
 
     private float _spawnTime;
+    private PlayerNetwork _spawner;
 
+    public void Initialize(PlayerNetwork spawner)
+    {
+        _spawner = spawner;
+    }
     public override void OnStartServer()
     {
         base.OnStartServer();
@@ -31,10 +36,11 @@ public class Projectile : NetworkBehaviour
 
         if (other.TryGetComponent<PlayerNetwork>(out PlayerNetwork target))
         {
-            if (target.OwnerId == base.OwnerId) return;
+            // Защита от дружественного огня по самому себе
+            if (_spawner != null && target == _spawner) return;
 
-            int newHp = Mathf.Max(0, target.HP.Value - _damage);
-            target.HP.Value = newHp;
+            // Вместо ручного изменения HP, вызываем единый метод на сервере
+            target.TakeDamage(_damage,_spawner);
         }
 
         base.ServerManager.Despawn(gameObject);
